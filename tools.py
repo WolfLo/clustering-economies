@@ -3,17 +3,10 @@ import numpy as np
 
 from sklearn.preprocessing import scale
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-
-from scipy.cluster import hierarchy
 
 from fancyimpute import KNN
-from fancyimpute import MICE
-from fancyimpute.bayesian_ridge_regression import BayesianRidgeRegression
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 class Preprocessing:
@@ -99,28 +92,54 @@ class PCAnalysis:
         self.df.info(verbose=False)
 
     def get_PC(self):
-        pca = PCA()
+        '''
+        Calculate the principal components (PC) and create a new DataFrame
+        by projecting the datapoints on the PC space.
+        '''
+        self.pca = PCA()
         self.df_pc = pd.DataFrame(
-            pca.fit_transform(self.df), index=self.df.index)
+            self.pca.fit_transform(self.df), index=self.df.index)
+
+        # plot the cumulated proportion of variance explained by the PC
+        plt.figure(figsize=(7, 5))
+
+        plt.plot(range(1, len(self.pca.components_)+1),
+                 self.pca.explained_variance_ratio_, '-o',
+                 label='Individual component')
+        plt.plot(range(1, len(self.pca.components_)+1),
+                 np.cumsum(self.pca.explained_variance_ratio_), '-s',
+                 label='Cumulative')
+
+        plt.ylabel('Proportion of Variance Explained')
+        plt.xlabel('Principal Component')
+        plt.xlim(0.75, 4.25)
+        plt.ylim(0, 1.05)
+        plt.xticks(range(1, len(self.pca.components_)+1))
+        plt.legend(loc=2)
+
         return self.df_pc
 
-    def plot_along_PC(pc1=0, pc2=1):
+    def plot_along_PC(self, pc1=0, pc2=1):
         '''
         Plot the countries along the two principal components given in input:
         pc1[int] (usually = 0, indicating the first PC) and pc2[int]
         '''
-        ax1.set_xlfig , ax1 = plt.subplots(figsize=(9,7))
+        fig, ax1 = plt.subplots(figsize=(9, 7))
 
-        ax1.set_xlim(-5,5)
-        ax1.set_ylim(-5,5)
+        ax1.set_xlim(-5, 5)
+        ax1.set_ylim(-5, 5)
 
         # Plot Principal Components pc1 and pc2
-        for i in df_pc.index:
-            ax1.annotate(i, (df_pc[pc1].loc[i], -df_pc[pc2].loc[i]), ha='center')
+        for i in self.df_pc.index:
+            ax1.annotate(i,
+                         (self.df_pc[pc1].loc[i], -self.df_pc[pc2].loc[i]),
+                         ha='center')
 
         # Plot reference lines
-        ax1.hlines(0,-5,5, linestyles='dotted', colors='grey')
-        ax1.vlines(0,-5,5, linestyles='dotted', colors='grey')
-
-        ax1.set_xlabel('PrincipalComponent%d' pc1)
-        ax1.set_ylabel('Principal Component%d' pc2)
+        ax1.hlines(0, -5, 5, linestyles='dotted', colors='grey')
+        ax1.vlines(0, -5, 5, linestyles='dotted', colors='grey')
+        pc1_string = 'Principal component' + str(pc1)
+        pc2_string = 'Principal component' + str(pc2)
+        ax1.set_xlabel(pc1_string)
+        ax1.set_ylabel(pc2_string)
+        return
