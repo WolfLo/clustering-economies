@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from sklearn.preprocessing import scale
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import KMeans
 import hdbscan
 
 from scipy.cluster import hierarchy
@@ -144,15 +144,15 @@ class Clustering:
 
         return self.df_pc
 
-    def plot_along_PC(self, pc1=0, pc2=1):
+    def plot_along_PC(self, pc1=0, pc2=1, xlim=[-5, 5], ylim=[-5, 5]):
         '''
         Plot the countries along the two principal components given in input:
         pc1[int] (usually = 0, indicating the first PC) and pc2[int]
         '''
         fig, ax1 = plt.subplots(figsize=(9, 7))
 
-        ax1.set_xlim(-5, 5)
-        ax1.set_ylim(-5, 5)
+        ax1.set_xlim(xlim[0], xlim[1])
+        ax1.set_ylim(ylim[0], ylim[1])
 
         # Plot Principal Components pc1 and pc2
         for i in self.df_pc.index:
@@ -169,9 +169,9 @@ class Clustering:
         ax1.set_ylabel(pc2_string)
         return
 
-    def plot_dendrogram(links, threshold):
+    def plot_dendrogram(self, links, threshold, metric, method):
         plt.figure(figsize=(15, 9))
-        den_title = 'METHOD: ' + str(met) + ' METRIC: ' + str(metric)
+        den_title = 'METHOD: ' + str(method) + ' METRIC: ' + str(metric)
         plt.title(den_title)
         den = hierarchy.dendrogram(links,
                                    orientation='right',
@@ -183,10 +183,15 @@ class Clustering:
                    colors='r', linestyles='dashed')
         return den
 
-    def clusters_table(clustering):
-        lis = sorted(list(zip(clustering, data.country_names)), key=lambda x: x[0])
-        groups = set(map(lambda x: x[0], l))
-        table = pd.DataFrame(list(zip(values, [[y[1] for y in l if y[0]==x] for x in values])))
+    def clusters_table(self, clustering):
+        '''
+        Clustering is an array of cluster labels, one for each country
+        '''
+        lis = sorted(
+            list(zip(clustering, self.country_names)), key=lambda x: x[0])
+        groups = set(map(lambda x: x[0], lis))
+        table = pd.DataFrame(list(
+            zip(groups, [[y[1] for y in lis if y[0] == x] for x in groups])))
         table.columns = ['Cluster', '']
         table.set_index('Cluster', inplace=True, verify_integrity=False)
         return table
@@ -197,13 +202,13 @@ class Clustering:
         Show figures of clusters retrieved through the hierachical method
         and return an array with the cluster index of each country.
 
-        metric -- the type of metric used for assigning distances to the data:
+        metric -- [str] used for assigning distances to data:
                    'euclidean', 'ćorrelation', 'cosine', 'seuclidean'...
-        method -- the type of linkage used for agglomerating the nodes
+        method -- [str] the type of linkage used for agglomerating the nodes
                     'average','complete','ward'...(check fastcluster full list)
-        threshold -- threshold distance for separing clusters,
+        threshold -- [int] threshold distance for separing clusters,
                      in the hierachical tree.
-        on_PC -- apply clustering by using data projections
+        on_PC -- [int] apply clustering by using data projections
                  on the first on_PC principal components
         '''
         if on_PC > 0:
@@ -221,21 +226,44 @@ class Clustering:
                       'ward',  # only for Euclidean data
                       ]
         elif type(method) != list:
-            list(method)
+            method = list([method])
 
         print('Hierarchical clustering with', metric, 'distance metric.')
         for met in method:
             # set up the linking tool
             links = linkage(df, metric=str(metric), method=met)
             # plot dendrogram
-            den = plot_dendrogram(links, threshold)
-
+            self.plot_dendrogram(links, threshold, metric, met)
+            # store tables of clusters for each clustering method used
             clustering_name = 'hierarchical_' + str(met) + '_' + str(metric)
-            self.clusterings[clustering_name] = hierarchy.fcluster(
-                links, threshold, criterion='distance')
+            self.clusterings[clustering_name] = self.clusters_table(
+                hierarchy.fcluster(links, threshold, criterion='distance'))
 
-            # self.hierarchical_classes = get_hierarchical_classes(den)
-            # plt.savefig('tree2.png')
+        # self.hierarchical_classes = get_hierarchical_classes(den)
+        # plt.savefig('tree2.png')
+
+    def hdbscan(self, min_cluster_size=2, on_PC=0):
+
+        if on_PC > 0:
+            df = self.df_pc.iloc[:, :on_PC+1]
+        else:
+            df = self.df
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size)
+        clusterer.fit_predict(df)
+        self.clusterings['hdbscan'] = self.clusters_table(clusterer.labels_)
+
+    def kmeans(self, n_clusters=2, on_PC=0):
+
+        if on_PC > 0:
+            df = self.df_pc.iloc[:, :on_PC+1]
+        else:
+            df = self.df
+        # re-initialize seed for random initial centroids' position
+        np.random.seed(2)
+        clusterer = KMeans(n_clusters=n_clusters)
+        clusterer.fit_predict(df)
+        self.clusterings['kmeans' + str(n_clusters)] = \
+            self.clusters_table(clusterer.labels_)
 
 
 class HTMLdenColors(dict):
