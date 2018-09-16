@@ -5,6 +5,7 @@ from collections import defaultdict
 from sklearn.preprocessing import scale
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+from sklearn import metrics
 import hdbscan
 
 from scipy.cluster import hierarchy
@@ -18,6 +19,10 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colors import rgb2hex, colorConverter
 import seaborn as sns
+
+from time import time
+import numpy as np
+import matplotlib.pyplot as plt
 
 # %matplotlib inline
 # plt.style.use('seaborn-white')
@@ -45,7 +50,7 @@ class Preprocessing:
             print('MISSING VALUES FOR EACH FEATURE:')
             print(self.df.isnull().sum(), '\n')
             print('MISSING VALUES FOR EACH COUNTRY:')
-            print(self.df.isnull().sum(axis=1))
+            print(self.df.isnull().sum(axis=1).sort_values(ascending=False).T)
 
     # def drop_poor_columns(self, p):
     #     ''' Drop the columns of self.df with more than p (%) missing values'''
@@ -77,9 +82,12 @@ class Preprocessing:
 
     def impute_KNN(self):
         # df is my data frame with the missings. I keep only floats
+        self.country_names = self.df['Country Name'].as_matrix()
         df_numeric = self.df.select_dtypes(include=[np.float64]).as_matrix()
         # impute missing values
-        df_filled_KNN = pd.DataFrame(KNN(3).complete(df_numeric))
+        df_filled_KNN = pd.DataFrame(KNN(2).complete(df_numeric))
+        df_filled_KNN.insert(
+            loc=0, column='Country Names', value=self.country_names)
         df_filled_KNN.columns = self.df.columns
         df_filled_KNN.index = self.df.index
         return df_filled_KNN
@@ -90,8 +98,8 @@ class Preprocessing:
             self.df.to_csv(path)
         else:
             # impute the missing values before exporting to csv
-            df_filled_KNN = self.impute_KNN()
-            df_filled_KNN.to_csv(path)
+            self.df = self.impute_KNN()
+            self.df.to_csv(path)
 
 
 class Clustering:
@@ -252,18 +260,66 @@ class Clustering:
         clusterer.fit_predict(df)
         self.clusterings['hdbscan'] = self.clusters_table(clusterer.labels_)
 
-    def kmeans(self, n_clusters=2, on_PC=0):
+    def kmeans(self, n_clusters=2, on_PC=0, n_init=50, evaluate=True):
 
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
         else:
             df = self.df
         # re-initialize seed for random initial centroids' position
-        np.random.seed(2)
-        clusterer = KMeans(n_clusters=n_clusters)
+        np.random.seed(42)
+        clusterer = KMeans(n_clusters=n_clusters, n_init=n_init)
         clusterer.fit_predict(df)
         self.clusterings['kmeans' + str(n_clusters)] = \
             self.clusters_table(clusterer.labels_)
+        if evaluate:
+            bench_clustering(clusterer, 'kmeans', df)
+
+    def multipleK_means(self, k_min, k_max, on_PC=0, n_init=50):
+        if on_PC > 0:
+            df = self.df_pc.iloc[:, :on_PC+1]
+        else:
+            df = self.df
+
+        ks = np.arange(k_min, k_max)
+        silh = np.zeros(k_max - k_min)
+        cal_har = np.zeros(k_max - k_min)
+        for k in ks:
+            # re-initialize seed for random initial centroids' position
+            np.random.seed(42)
+            clusterer = KMeans(n_clusters=k, n_init=n_init)
+            clusterer.fit_predict(df)
+            self.clusterings['kmeans' + str(k)] = \
+                self.clusters_table(clusterer.labels_)
+            silh[k-k_min] = metrics.silhouette_score(
+                df, clusterer.labels_, metric='euclidean')
+            cal_har[k-k_min] = metrics.calinski_harabaz_score(
+                df, clusterer.labels_)
+
+        # multiple line plot
+        fig, ax1 = plt.subplots()
+        color = 'green'
+        ax1.set_xlabel('Number of clusters')
+        ax1.set_ylabel('Silhouette Score', color=color)
+        plt.plot(ks, silh, marker='o', markerfacecolor=color,
+                 markersize=6, color=color, linewidth=2)
+
+        ax2 = ax1.twinx()
+        color = 'orange'
+        ax2.set_ylabel('Calinski-Harabaz Score', color=color)
+        plt.plot(ks, cal_har, marker='o', markerfacecolor=color,
+                 markersize=6, color=color, linewidth=2)
+        ax1.grid(True)
+        plt.legend()
+
+        return silh, cal_har
+
+
+def bench_clustering(estimator, name, data):
+    silh = metrics.silhouette_score(
+        data, estimator.labels_, metric='euclidean')
+    cal_har = metrics.calinski_harabaz_score(data, estimator.labels_)
+    return silh, cal_har
 
 
 class HTMLdenColors(dict):
