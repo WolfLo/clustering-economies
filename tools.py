@@ -5,6 +5,7 @@ from collections import defaultdict
 from sklearn.preprocessing import scale
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture, BayesianGaussianMixture
 from sklearn import metrics
 import hdbscan
 
@@ -17,6 +18,7 @@ from fancyimpute.bayesian_ridge_regression import BayesianRidgeRegression
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import rgb2hex, colorConverter
 import seaborn as sns
 
@@ -63,7 +65,7 @@ class Preprocessing:
     #     self.df.drop(poor_columns, axis=1, inplace=True)
     #     return self.df, poor_columns
 
-    def drop_poor_features(self, axis, p):
+    def dropPoorFeatures(self, axis, p):
         '''
         Drop the rows/columns of self.df with more than p (%) missing values
         axis -- indicate whether to drop rows (axis=0) or columns(axis=1)
@@ -80,7 +82,7 @@ class Preprocessing:
         self.df.drop(poor_features, axis=axis, inplace=True)
         return self.df, poor_features
 
-    def impute_KNN(self):
+    def imputeKNN(self):
         # df is my data frame with the missings. I keep only floats
         self.country_names = self.df['Country Name'].as_matrix()
         df_numeric = self.df.select_dtypes(include=[np.float64]).as_matrix()
@@ -92,13 +94,13 @@ class Preprocessing:
         df_filled_KNN.index = self.df.index
         return df_filled_KNN
 
-    def export_csv(self, path, impute=False):
+    def exportCSV(self, path, impute=False):
         if not impute:
             # export the cleaned dataframe to a csv file
             self.df.to_csv(path)
         else:
             # impute the missing values before exporting to csv
-            self.df = self.impute_KNN()
+            self.df = self.imputeKNN()
             self.df.to_csv(path)
 
 
@@ -123,7 +125,7 @@ class Clustering:
         print('The imported dataset as the following characteristics:')
         print(self.df.info(verbose=False))
 
-    def get_PC(self):
+    def getPC(self):
         '''
         Calculate the principal components (PC) and create a new DataFrame
         by projecting the datapoints on the PC space.
@@ -150,9 +152,7 @@ class Clustering:
         plt.xticks(range(1, len(self.pca.components_)+1))
         plt.legend(loc=2)
 
-        return self.df_pc
-
-    def plot_along_PC(self, pc1=0, pc2=1, xlim=[-5, 5], ylim=[-5, 5]):
+    def plotAlongPC(self, pc1=0, pc2=1, xlim=[-5, 5], ylim=[-5, 5]):
         '''
         Plot the countries along the two principal components given in input:
         pc1[int] (usually = 0, indicating the first PC) and pc2[int]
@@ -177,7 +177,7 @@ class Clustering:
         ax1.set_ylabel(pc2_string)
         return
 
-    def plot_dendrogram(self, links, threshold, metric, method):
+    def plotDendrogram(self, links, threshold, metric, method):
         plt.figure(figsize=(15, 9))
         den_title = 'METHOD: ' + str(method) + ' METRIC: ' + str(metric)
         plt.title(den_title)
@@ -189,9 +189,10 @@ class Clustering:
         plt.vlines(threshold, 0,
                    plt.gca().yaxis.get_data_interval()[1],
                    colors='r', linestyles='dashed')
+
         return den
 
-    def clusters_table(self, clustering):
+    def clustersTable(self, clustering):
         '''
         Clustering is an array of cluster labels, one for each country
         '''
@@ -204,7 +205,7 @@ class Clustering:
         table.set_index('Cluster', inplace=True, verify_integrity=False)
         return table
 
-    def hierarchical_clustering(
+    def hierarchicalClustering(
             self, metric, method, threshold=None, on_PC=0):
         '''
         Show figures of clusters retrieved through the hierachical method
@@ -235,33 +236,82 @@ class Clustering:
                       ]
         elif type(method) != list:
             method = list([method])
+        metric = str(metric)
 
         print('Hierarchical clustering with', metric, 'distance metric.')
         for met in method:
             # set up the linking tool
-            links = linkage(df, metric=str(metric), method=met)
+            links = linkage(df, metric=metric, method=met)
+            self.link = links
             # plot dendrogram
-            self.plot_dendrogram(links, threshold, metric, met)
+            self.plotDendrogram(links, threshold, metric, met)
+            cmap = sns.cubehelix_palette(
+                as_cmap=True, start=.5, rot=-.75, light=.9)
+            sns.clustermap(
+                data=df, row_linkage=links, col_cluster=False, cmap=cmap)
             # store tables of clusters for each clustering method used
             clustering_name = 'hierarchical_' + str(met) + '_' + str(metric)
-            self.clusterings[clustering_name] = self.clusters_table(
+            self.clusterings[clustering_name] = self.clustersTable(
                 hierarchy.fcluster(links, threshold, criterion='distance'))
 
         # self.hierarchical_classes = get_hierarchical_classes(den)
         # plt.savefig('tree2.png')
 
     def hdbscan(self, min_cluster_size=2, on_PC=0):
-
+        '''compute clusters using HDBSCAN algorithm'''
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
         else:
             df = self.df
         clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size)
         clusterer.fit_predict(df)
-        self.clusterings['hdbscan'] = self.clusters_table(clusterer.labels_)
+        self.clusterings['hdbscan'] = self.clustersTable(clusterer.labels_)
+
+    def bayesianGm(self, n_components, covariance_type='full', n_init=50, on_PC=0):
+        '''compute Gaussian Mixture clustering'''
+        if on_PC > 0:
+            df = self.df_pc.iloc[:, :on_PC+1]
+        else:
+            df = self.df
+        clusterer = GaussianMixture(n_components,
+                                    covariance_type=covariance_type,
+                                    n_init=n_init)
+        labels = clusterer.fit(df).predict(df)
+        self.clusterings['gmm' + str(n_components)] = \
+            self.clustersTable(labels)
+
+    def gm(self, n_components, covariance_type='full', n_init=50, on_PC=0):
+        '''compute Gaussian Mixture clustering'''
+        if on_PC > 0:
+            df = self.df_pc.iloc[:, :on_PC+1]
+        else:
+            df = self.df
+        clusterer = GaussianMixture(n_components,
+                                    covariance_type=covariance_type,
+                                    n_init=n_init)
+        labels = clusterer.fit(df).predict(df)
+        self.clusterings['gmm' + str(n_components)] = \
+            self.clustersTable(labels)
+
+    def gmBIC(self, n_min, n_max, covariance_type='full',
+                n_init=50, on_PC=0):
+        if on_PC > 0:
+            df = self.df_pc.iloc[:, :on_PC+1]
+        else:
+            df = self.df
+        '''compute Bayesian Information Criterion'''
+        n_components = np.arange(n_min, n_max)
+        models = [
+            GaussianMixture(n, covariance_type=covariance_type, n_init=n_init)
+            for n in n_components]
+        bics = [model.fit(df).bic(df) for model in models]
+        n_optimal = np.array(bics).argmin()+1
+        plt.plot(n_components, bics)
+        print('the minimum BIC is achieved with \
+              %i gaussian components' % n_optimal)
 
     def kmeans(self, n_clusters=2, on_PC=0, n_init=50, evaluate=True):
-
+        '''compute clusters using KMeans algorithm'''
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
         else:
@@ -271,11 +321,12 @@ class Clustering:
         clusterer = KMeans(n_clusters=n_clusters, n_init=n_init)
         clusterer.fit_predict(df)
         self.clusterings['kmeans' + str(n_clusters)] = \
-            self.clusters_table(clusterer.labels_)
+            self.clustersTable(clusterer.labels_)
+        # compute Silhouette and Calinski-Harabaz Score
         if evaluate:
-            bench_clustering(clusterer, 'kmeans', df)
+            benchClustering(clusterer, 'kmeans', df)
 
-    def multipleK_means(self, k_min, k_max, on_PC=0, n_init=50):
+    def multipleKmeans(self, k_min, k_max, on_PC=0, n_init=50):
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
         else:
@@ -290,7 +341,7 @@ class Clustering:
             clusterer = KMeans(n_clusters=k, n_init=n_init)
             clusterer.fit_predict(df)
             self.clusterings['kmeans' + str(k)] = \
-                self.clusters_table(clusterer.labels_)
+                self.clustersTable(clusterer.labels_)
             silh[k-k_min] = metrics.silhouette_score(
                 df, clusterer.labels_, metric='euclidean')
             cal_har[k-k_min] = metrics.calinski_harabaz_score(
@@ -315,48 +366,22 @@ class Clustering:
         return silh, cal_har
 
 
-def bench_clustering(estimator, name, data):
+def benchClustering(estimator, name, data):
     silh = metrics.silhouette_score(
         data, estimator.labels_, metric='euclidean')
     cal_har = metrics.calinski_harabaz_score(data, estimator.labels_)
     return silh, cal_har
 
 
-class HTMLdenColors(dict):
-    ''' The code for this class has been taken from:
-        http://www.nxn.se/valent/extract-cluster-elements-by-color-in-python
-    '''
+def clusterScatter(x, y, z, clusters=None):
+    x, y, z = np.random.random((3, 10000))
 
-    def _repr_html_(self):
-        html = '<table style="border: 0;">'
-        for c in self:
-            hx = rgb2hex(colorConverter.to_rgb(c))
-            html += '<tr style="border: 0;">' \
-                '<td style="background-color: {0}; ' \
-                'border: 0;">' \
-                '<code style="background-color: {0};">'.format(hx)
-            html += c + '</code></td>'
-            html += '<td style="border: 0"><code>'
-            html += repr(self[c]) + '</code>'
-            html += '</td></tr>'
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    if clusters:
+        colors = clusters
+    else:
+        color = 'green'
 
-        html += '</table>'
-        return html
-
-
-def get_hierarchical_classes(den, label='ivl'):
-    ''' The code for this function has been taken from:
-        http://www.nxn.se/valent/extract-cluster-elements-by-color-in-python
-    '''
-    cluster_idxs = defaultdict(list)
-    for c, pi in zip(den['color_list'], den['icoord']):
-        for leg in pi[1:3]:
-            i = (leg - 5.0) / 10.0
-            if abs(i - int(i)) < 1e-5:
-                cluster_idxs[c].append(int(i))
-
-    cluster_classes = HTMLdenColors()
-    for c, l in cluster_idxs.items():
-        i_l = [den[label][i] for i in l]
-        cluster_classes[c] = i_l
-    return cluster_classes
+    ax.scatter(x,y,z, marker="o", c=clusters, s=40, cmap="RdBu")
+    plt.show()
