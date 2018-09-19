@@ -22,10 +22,6 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import rgb2hex, colorConverter
 import seaborn as sns
 
-from time import time
-import numpy as np
-import matplotlib.pyplot as plt
-
 # %matplotlib inline
 # plt.style.use('seaborn-white')
 
@@ -267,20 +263,26 @@ class Clustering:
         clusterer.fit_predict(df)
         self.clusterings['hdbscan'] = self.clustersTable(clusterer.labels_)
 
-    def bayesianGm(self, n_components, covariance_type='full', n_init=50, on_PC=0):
-        '''compute Gaussian Mixture clustering'''
+    def bayesianGaussianMixture(self, n_components, covariance_type='full',
+                    n_init=50, on_PC=0):
+        '''
+        Compute Bayesian Gaussian Mixture clustering.
+        Note: in this case, the number of components effectively used
+        can be < n_componentss (at most, n_components).
+        '''
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
         else:
             df = self.df
-        clusterer = GaussianMixture(n_components,
-                                    covariance_type=covariance_type,
-                                    n_init=n_init)
+        clusterer = BayesianGaussianMixture(n_components,
+                                            covariance_type=covariance_type,
+                                            n_init=n_init)
         labels = clusterer.fit(df).predict(df)
-        self.clusterings['gmm' + str(n_components)] = \
+        self.clusterings['bayesian gm' + str(n_components)] = \
             self.clustersTable(labels)
 
-    def gm(self, n_components, covariance_type='full', n_init=50, on_PC=0):
+    def gaussianMixture(self, n_components, covariance_type='full',
+                        n_init=50, on_PC=0):
         '''compute Gaussian Mixture clustering'''
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
@@ -290,7 +292,7 @@ class Clustering:
                                     covariance_type=covariance_type,
                                     n_init=n_init)
         labels = clusterer.fit(df).predict(df)
-        self.clusterings['gmm' + str(n_components)] = \
+        self.clusterings['gm' + str(n_components)] = \
             self.clustersTable(labels)
 
     def gmBIC(self, n_min, n_max, covariance_type='full',
@@ -305,10 +307,12 @@ class Clustering:
             GaussianMixture(n, covariance_type=covariance_type, n_init=n_init)
             for n in n_components]
         bics = [model.fit(df).bic(df) for model in models]
-        n_optimal = np.array(bics).argmin()+1
+        bics = np.array(bics)
+        # store the optimal number of gaussian components and the resulting BIC
+        self.min_BIC = [bics.argmin()+1, bics.min()]
         plt.plot(n_components, bics)
         print('the minimum BIC is achieved with \
-              %i gaussian components' % n_optimal)
+              %i gaussian components' % self.min_BIC[0])
 
     def kmeans(self, n_clusters=2, on_PC=0, n_init=50, evaluate=True):
         '''compute clusters using KMeans algorithm'''
@@ -365,6 +369,24 @@ class Clustering:
 
         return silh, cal_har
 
+
+def plotBarh(df, by_column):
+
+    by_column = str(by_column)
+    newdf = df.sort_values(by=[by_column])
+    x = np.array(newdf[by_column])
+    y = np.array(newdf['Country Name'])
+    y_pos = np.arange(len(y))
+
+    fig, ax = plt.subplots(figsize=(5, 10))
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(y)
+    ax.invert_yaxis()  # labels read top-to-bottom
+    # ax.set_xlabel('%GDP')
+    ax.set_title(by_column)
+
+    ax.barh(y_pos, x)
 
 def benchClustering(estimator, name, data):
     silh = metrics.silhouette_score(
