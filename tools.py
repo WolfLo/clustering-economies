@@ -100,6 +100,17 @@ class Preprocessing:
             self.df.to_csv(path)
 
 
+def heatmap(df, links):
+    '''
+    Plot a matrix dataset as a hierarchically-clustered heatmap,
+    using given linkages.
+    '''
+    cmap = sns.cubehelix_palette(
+        as_cmap=True, start=.5, rot=-.75, light=.9)
+    sns.clustermap(
+        data=df, row_linkage=links, col_cluster=False, cmap=cmap)
+
+
 class Clustering:
     def __init__(self, csv_path):
         self.df = pd.read_csv(csv_path)
@@ -127,6 +138,8 @@ class Clustering:
         by projecting the datapoints on the PC space.
         '''
         self.pca = PCA()
+        self.pca_loadings = pd.DataFrame(
+            PCA().fit(self.df).components_.T, index=self.df.columns)
         self.df_pc = pd.DataFrame(
             self.pca.fit_transform(self.df), index=self.df.index)
 
@@ -148,7 +161,8 @@ class Clustering:
         plt.xticks(range(1, len(self.pca.components_)+1))
         plt.legend(loc=2)
 
-    def plotAlongPC(self, pc1=0, pc2=1, xlim=[-5, 5], ylim=[-5, 5]):
+    def plotAlongPC(self, pc1=0, pc2=1,
+                    xlim=[-5, 5], ylim=[-5, 5], loadings=True):
         '''
         Plot the countries along the two principal components given in input:
         pc1[int] (usually = 0, indicating the first PC) and pc2[int]
@@ -171,6 +185,32 @@ class Clustering:
         pc2_string = 'Principal Component ' + str(pc2)
         ax1.set_xlabel(pc1_string)
         ax1.set_ylabel(pc2_string)
+
+        if loadings:
+            # Plot Principal Component loading vectors, using a second y-axis.
+            ax2 = ax1.twinx().twiny()
+
+            ax2.set_ylim(-1, 1)
+            ax2.set_xlim(-1, 1)
+            ax2.tick_params(axis='y', colors='orange')
+            # ax2.set_xlabel('Principal Component loading vectors',
+            # color='orange')
+
+            # Plot labels for vectors.
+            # 'a' is an offset parameter to separate arrow tip and text.
+            a = 1.07
+            for i in self.pca_loadings[[pc1, pc2]].index:
+                ax2.annotate(i,
+                             (self.pca_loadings[pc1].loc[i]*a,
+                              -self.pca_loadings[pc2].loc[i]*a),
+                             color='orange')
+
+            # Plot vectors
+            for k in range(len(self.pca_loadings.columns)):
+                ax2.arrow(0, 0, self.pca_loadings[pc1][k],
+                          -self.pca_loadings[pc2][k],
+                          width=0.002, color='black')
+
         return
 
     def plotDendrogram(self, links, threshold, metric, method):
@@ -202,7 +242,7 @@ class Clustering:
         return table
 
     def hierarchicalClustering(
-            self, metric, method, threshold=None, on_PC=0):
+            self, metric, method, threshold=None, on_PC=0, heatmap=False):
         '''
         Show figures of clusters retrieved through the hierachical method
         and return an array with the cluster index of each country.
@@ -241,10 +281,8 @@ class Clustering:
             self.link = links
             # plot dendrogram
             self.plotDendrogram(links, threshold, metric, met)
-            cmap = sns.cubehelix_palette(
-                as_cmap=True, start=.5, rot=-.75, light=.9)
-            sns.clustermap(
-                data=df, row_linkage=links, col_cluster=False, cmap=cmap)
+            if heatmap:
+                heatmap(df, links)
             # store tables of clusters for each clustering method used
             clustering_name = 'hierarchical_' + str(met) + '_' + str(metric)
             self.clusterings[clustering_name] = self.clustersTable(
@@ -310,9 +348,11 @@ class Clustering:
         bics = np.array(bics)
         # store the optimal number of gaussian components and the resulting BIC
         self.min_BIC = [bics.argmin()+1, bics.min()]
-        plt.plot(n_components, bics)
         print('the minimum BIC is achieved with \
               %i gaussian components' % self.min_BIC[0])
+        plt.figure('Bayesian Information Criterion')
+        plt.plot(n_components, bics)
+
 
     def kmeans(self, n_clusters=2, on_PC=0, n_init=50, evaluate=True):
         '''compute clusters using KMeans algorithm'''
@@ -344,15 +384,13 @@ class Clustering:
             np.random.seed(42)
             clusterer = KMeans(n_clusters=k, n_init=n_init)
             clusterer.fit_predict(df)
-            self.clusterings['kmeans' + str(k)] = \
-                self.clustersTable(clusterer.labels_)
             silh[k-k_min] = metrics.silhouette_score(
                 df, clusterer.labels_, metric='euclidean')
             cal_har[k-k_min] = metrics.calinski_harabaz_score(
                 df, clusterer.labels_)
 
         # multiple line plot
-        fig, ax1 = plt.subplots()
+        fig, ax1 = plt.subplots(num='How many clusters?')
         color = 'green'
         ax1.set_xlabel('Number of clusters')
         ax1.set_ylabel('Silhouette Score', color=color)
@@ -378,7 +416,7 @@ def plotBarh(df, by_column):
     y = np.array(newdf['Country Name'])
     y_pos = np.arange(len(y))
 
-    fig, ax = plt.subplots(figsize=(5, 10))
+    fig, ax = plt.subplots(figsize=(7, 10))
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(y)
