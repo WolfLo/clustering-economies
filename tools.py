@@ -45,10 +45,16 @@ class Preprocessing:
             self.df.iloc[:, 1:].apply(pd.to_numeric, errors='coerce')
         # report poor features and selected_countries
         if verbose:
+            feature_miss = self.df.isnull().sum()
+            country_miss = self.df.isnull().sum(axis=1)
+            feature_miss = \
+                feature_miss[feature_miss != 0].sort_values(ascending=False)
+            country_miss = \
+                country_miss[country_miss != 0].sort_values(ascending=False)
             print('MISSING VALUES FOR EACH FEATURE:')
-            print(self.df.isnull().sum(), '\n')
+            print(feature_miss, '\n')
             print('MISSING VALUES FOR EACH COUNTRY:')
-            print(self.df.isnull().sum(axis=1).sort_values(ascending=False).T)
+            print(country_miss)
 
     # def drop_poor_columns(self, p):
     #     ''' Drop the columns of self.df with more than p (%) missing values'''
@@ -80,10 +86,11 @@ class Preprocessing:
 
     def imputeKNN(self):
         # df is my data frame with the missings. I keep only floats
-        self.country_names = self.df['Country Name'].as_matrix()
-        df_numeric = self.df.select_dtypes(include=[np.float64]).as_matrix()
+        self.country_names = self.df['Country Name'].values
+        df_numeric = self.df.select_dtypes(include=[np.float64]).values
         # impute missing values
-        df_filled_KNN = pd.DataFrame(KNN(2).complete(df_numeric))
+        df_filled_KNN = pd.DataFrame(
+            KNN(k=2, verbose=False).complete(df_numeric))
         df_filled_KNN.insert(
             loc=0, column='Country Names', value=self.country_names)
         df_filled_KNN.columns = self.df.columns
@@ -96,8 +103,8 @@ class Preprocessing:
             self.df.to_csv(path)
         else:
             # impute the missing values before exporting to csv
-            self.df = self.imputeKNN()
-            self.df.to_csv(path)
+            self.df_filled_KNN = self.imputeKNN()
+            self.df_filled_KNN.to_csv(path)
 
 
 def heatmap(df, links):
@@ -112,13 +119,13 @@ def heatmap(df, links):
 
 
 class Clustering:
-    def __init__(self, csv_path):
+    def __init__(self, csv_path, verbose=False):
         self.df = pd.read_csv(csv_path)
         # change index (row labels)
         self.df = self.df.set_index('Country Code', verify_integrity=True)
         # df.info(verbose=False)
         # store country full names (for plots) before removing the feature
-        self.country_names = self.df['Country Name'].as_matrix()
+        self.country_names = self.df['Country Name'].values
         self.df = self.df.drop(['Country Name'], axis=1)
         # scale the dataset to be distributed as a standard Gaussian
         cols = self.df.columns
@@ -128,9 +135,11 @@ class Clustering:
         self.df.index = ind
         # create disctionary of clusters
         self.clusterings = defaultdict(lambda: np.array(0))
+        self.clusterings_labels = defaultdict(lambda: np.array(0))
         # print general info
-        print('The imported dataset as the following characteristics:')
-        print(self.df.info(verbose=False))
+        if verbose:
+            print('The imported dataset as the following characteristics:')
+            print(self.df.info(verbose=False))
 
     def getPC(self):
         '''
@@ -210,7 +219,6 @@ class Clustering:
                 ax2.arrow(0, 0, self.pca_loadings[pc1][k],
                           -self.pca_loadings[pc2][k],
                           width=0.002, color='black')
-
         return
 
     def plotDendrogram(self, links, threshold, metric, method):
@@ -240,6 +248,13 @@ class Clustering:
         table.columns = ['Cluster', '']
         table.set_index('Cluster', inplace=True, verify_integrity=False)
         return table
+
+    def saveClustering(self, cluster_labels, clustering_name):
+        # save clusterings into a dict and rename its columns
+        self.clusterings[clustering_name] = \
+            self.clustersTable(cluster_labels)
+        self.clusterings[clustering_name].columns = [clustering_name]
+        self.clusterings_labels[clustering_name] = cluster_labels
 
     def hierarchicalClustering(
             self, metric, method, threshold=None, on_PC=0, heatmap=False):
@@ -283,10 +298,11 @@ class Clustering:
             self.plotDendrogram(links, threshold, metric, met)
             if heatmap:
                 heatmap(df, links)
-            # store tables of clusters for each clustering method used
-            clustering_name = 'hierarchical_' + str(met) + '_' + str(metric)
-            self.clusterings[clustering_name] = self.clustersTable(
-                hierarchy.fcluster(links, threshold, criterion='distance'))
+
+            labels = hierarchy.fcluster(links, threshold, criterion='distance')
+            # save clusters
+            self.saveClustering(
+                labels, 'hierarchical_' + str(met) + '_' + str(metric))
 
         # self.hierarchical_classes = get_hierarchical_classes(den)
         # plt.savefig('tree2.png')
@@ -299,10 +315,11 @@ class Clustering:
             df = self.df
         clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size)
         clusterer.fit_predict(df)
-        self.clusterings['hdbscan'] = self.clustersTable(clusterer.labels_)
+        # save clusters
+        self.saveClustering(clusterer.labels_, 'hdbscan')
 
     def bayesianGaussianMixture(self, n_components, covariance_type='full',
-                    n_init=50, on_PC=0):
+                                n_init=50, on_PC=0):
         '''
         Compute Bayesian Gaussian Mixture clustering.
         Note: in this case, the number of components effectively used
@@ -316,8 +333,8 @@ class Clustering:
                                             covariance_type=covariance_type,
                                             n_init=n_init)
         labels = clusterer.fit(df).predict(df)
-        self.clusterings['bayesian gm' + str(n_components)] = \
-            self.clustersTable(labels)
+        # save clusters
+        self.saveClustering(labels, 'bayesian gm' + str(n_components))
 
     def gaussianMixture(self, n_components, covariance_type='full',
                         n_init=50, on_PC=0):
@@ -330,11 +347,11 @@ class Clustering:
                                     covariance_type=covariance_type,
                                     n_init=n_init)
         labels = clusterer.fit(df).predict(df)
-        self.clusterings['gm' + str(n_components)] = \
-            self.clustersTable(labels)
+        # save clusters
+        self.saveClustering(labels, 'gm' + str(n_components))
 
     def gmBIC(self, n_min, n_max, covariance_type='full',
-                n_init=50, on_PC=0):
+              n_init=50, on_PC=0):
         if on_PC > 0:
             df = self.df_pc.iloc[:, :on_PC+1]
         else:
@@ -353,7 +370,6 @@ class Clustering:
         plt.figure('Bayesian Information Criterion')
         plt.plot(n_components, bics)
 
-
     def kmeans(self, n_clusters=2, on_PC=0, n_init=50, evaluate=True):
         '''compute clusters using KMeans algorithm'''
         if on_PC > 0:
@@ -364,8 +380,8 @@ class Clustering:
         np.random.seed(42)
         clusterer = KMeans(n_clusters=n_clusters, n_init=n_init)
         clusterer.fit_predict(df)
-        self.clusterings['kmeans' + str(n_clusters)] = \
-            self.clustersTable(clusterer.labels_)
+        # save clusters
+        self.saveClustering(clusterer.labels_, 'kmeans' + str(n_clusters))
         # compute Silhouette and Calinski-Harabaz Score
         if evaluate:
             benchClustering(clusterer, 'kmeans', df)
@@ -404,7 +420,6 @@ class Clustering:
                  markersize=6, color=color, linewidth=2)
         ax1.grid(True)
         plt.legend()
-
         return silh, cal_har
 
 
@@ -426,22 +441,9 @@ def plotBarh(df, by_column):
 
     ax.barh(y_pos, x)
 
+
 def benchClustering(estimator, name, data):
     silh = metrics.silhouette_score(
         data, estimator.labels_, metric='euclidean')
     cal_har = metrics.calinski_harabaz_score(data, estimator.labels_)
     return silh, cal_har
-
-
-def clusterScatter(x, y, z, clusters=None):
-    x, y, z = np.random.random((3, 10000))
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    if clusters:
-        colors = clusters
-    else:
-        color = 'green'
-
-    ax.scatter(x,y,z, marker="o", c=clusters, s=40, cmap="RdBu")
-    plt.show()
