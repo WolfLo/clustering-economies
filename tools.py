@@ -13,13 +13,10 @@ from scipy.cluster import hierarchy
 from fastcluster import linkage
 
 from fancyimpute import KNN
-from fancyimpute import MICE
-from fancyimpute.bayesian_ridge_regression import BayesianRidgeRegression
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colors import rgb2hex, colorConverter
+import pylab
+
 import seaborn as sns
 
 # %matplotlib inline
@@ -170,8 +167,8 @@ class Clustering:
         plt.xticks(range(1, len(self.pca.components_)+1))
         plt.legend(loc=2)
 
-    def plotAlongPC(self, pc1=0, pc2=1,
-                    xlim=[-5, 5], ylim=[-5, 5], loadings=True):
+    def plotAlongPC(self, pc1=0, pc2=1, xlim=[-5, 5], ylim=[-5, 5],
+                    loadings=True, clustering=None):
         '''
         Plot the countries along the two principal components given in input:
         pc1[int] (usually = 0, indicating the first PC) and pc2[int]
@@ -181,11 +178,28 @@ class Clustering:
         ax1.set_xlim(xlim[0], xlim[1])
         ax1.set_ylim(ylim[0], ylim[1])
 
-        # Plot Principal Components pc1 and pc2
-        for i in self.df_pc.index:
-            ax1.annotate(i,
-                         (self.df_pc[pc1].loc[i], -self.df_pc[pc2].loc[i]),
-                         ha='center')
+        if clustering is not None:
+            # build a generator of colors
+            NUM_COLORS = len(self.clusterings[clustering])
+            clist = np.random.uniform(low=0, high=1, size=(NUM_COLORS, 4))
+            # plot countries along PCs coloring them according to their cluster
+            labels = self.clusterings_labels[clustering]
+            for i, country in enumerate(self.df_pc.index):
+                ax1.annotate(country,
+                             (self.df_pc[pc1].loc[country],
+                              -self.df_pc[pc2].loc[country]),
+                             ha='center',
+                             color=clist[labels[i]],
+                             fontweight='bold')
+        else:
+            # plot countries along PCs
+            for i in self.df_pc.index:
+                ax1.annotate(i,
+                             (self.df_pc[pc1].loc[i],
+                              -self.df_pc[pc2].loc[i]),
+                             ha='center',
+                             color='b',
+                             fontweight='bold')
 
         # Plot reference lines
         ax1.hlines(0, -5, 5, linestyles='dotted', colors='grey')
