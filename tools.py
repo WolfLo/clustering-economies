@@ -438,9 +438,12 @@ class Clustering:
 
 
 def plotBarh(df, by_column):
+    '''
+    Horizontal bar chart with by_column value for each country.
+    by_column - column name of the variable to plot as bars [str]
+    '''
 
-    by_column = str(by_column)
-    newdf = df.sort_values(by=[by_column])
+    newdf = df.sort_values(by=str(by_column))
     x = np.array(newdf[by_column])
     y = np.array(newdf['Country Name'])
     y_pos = np.arange(len(y))
@@ -453,7 +456,36 @@ def plotBarh(df, by_column):
     # ax.set_xlabel('%GDP')
     ax.set_title(by_column)
 
-    ax.barh(y_pos, x)
+    ax.barh(y_pos, x, color='b')
+
+
+def plotMultiBarh(df, by_columns, country_names):
+    '''
+    #TODO fix this
+    Horizontal bar chart with by_columns value for each country.
+    by_columns - list of variables to plot as bars
+    '''
+    newdf = df.sort_values(by=by_columns)
+    x = np.array(newdf[by_columns])
+    y = np.array(country_names)
+    y_pos = np.arange(len(y))
+
+    fig, ax = plt.subplots(figsize=(7, 10))
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(y)
+    ax.invert_yaxis()  # labels read top-to-bottom
+    # ax.set_xlabel('%GDP')
+    # ax.set_title(by_column)
+    bar_width = 0.2
+    width = 0.2
+    colors = list('rgby')
+    for i in range(x.shape[1]):
+        ax.barh(y_pos + width, x[:, i], bar_width,
+                color=colors[i], label=by_columns[i])
+        width += width
+
+    ax.legend()
 
 
 def benchClustering(estimator, name, data):
