@@ -377,7 +377,7 @@ class Clustering:
         bics = [model.fit(df).bic(df) for model in models]
         bics = np.array(bics)
         # store the optimal number of gaussian components and the resulting BIC
-        self.min_BIC = [bics.argmin()+1, bics.min()]
+        self.min_BIC = [bics.argmin()+1+n_min, bics.min()]
         print('the minimum BIC is achieved with \
               %i gaussian components' % self.min_BIC[0])
         plt.figure('Bayesian Information Criterion')
