@@ -303,7 +303,6 @@ class Clustering:
             method = list([method])
         metric = str(metric)
 
-        print('Hierarchical clustering with', metric, 'distance metric.')
         for met in method:
             # set up the linking tool
             links = linkage(df, metric=metric, method=met)
@@ -316,7 +315,7 @@ class Clustering:
             labels = hierarchy.fcluster(links, threshold, criterion='distance')
             # save clusters
             self.saveClustering(
-                labels, 'hierarchical_' + str(met) + '_' + str(metric))
+                labels, 'hc_'+str(met)+'_'+str(metric)+'_'+str(threshold))
 
         # self.hierarchical_classes = get_hierarchical_classes(den)
         # plt.savefig('tree2.png')
