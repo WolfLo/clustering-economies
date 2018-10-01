@@ -377,10 +377,10 @@ class Clustering:
         bics = [model.fit(df).bic(df) for model in models]
         bics = np.array(bics)
         # store the optimal number of gaussian components and the resulting BIC
-        self.min_BIC = [bics.argmin()+1+n_min, bics.min()]
+        self.min_BIC = [bics.argmin()+n_min, bics.min()]
         print('the minimum BIC is achieved with \
               %i gaussian components' % self.min_BIC[0])
-        plt.figure('Bayesian Information Criterion')
+        fig, ax = plt.subplots(num='Bayesian Information Criterion')
         plt.plot(n_components, bics)
 
     def kmeans(self, n_clusters=2, on_PC=0, n_init=50, evaluate=True):
