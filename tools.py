@@ -15,7 +15,6 @@ from fastcluster import linkage
 from fancyimpute import KNN
 
 import matplotlib.pyplot as plt
-import pylab
 
 import seaborn as sns
 
@@ -435,6 +434,32 @@ class Clustering:
         plt.legend()
         return silh, cal_har
 
+    def country_links(self, clustering_array):
+        # given a clustering, build a table of country links
+        ll = len(clustering_array)
+        tab = np.zeros((ll, ll))
+        for k in range(ll):
+            tab[k] = (clustering_array == clustering_array[k])
+        return tab
+
+    def clustering_similarities(self):
+        n_methods = len(self.clusterings_labels)
+        n_countries = len(self.country_names)
+        size = n_countries**2
+        tab = np.zeros((n_methods, n_countries, n_countries))
+        sim = np.zeros((n_methods, n_methods))
+        # for each clustering, build the table of country links
+        for k, clus in enumerate(self.clusterings_labels):
+            tab[k] = self.country_links(self.clusterings_labels[clus])
+        # for each clustering's table of links,
+        # calculate its similarity to the others
+        for k in range(n_methods):
+            for kk in range(n_methods):
+                sim[k][kk] = (tab[k] == tab[kk]).sum()/size
+                methods = list(self.clusterings_labels.keys())
+        sim = pd.DataFrame(sim, index=methods, columns=methods)
+        return sim
+
 
 def plotBarh(df, by_column):
     '''
@@ -492,3 +517,19 @@ def benchClustering(estimator, name, data):
         data, estimator.labels_, metric='euclidean')
     cal_har = metrics.calinski_harabaz_score(data, estimator.labels_)
     return silh, cal_har
+
+
+def highlight_max(data, color='yellow'):
+    '''
+    highlight the maximum in a Series or DataFrame
+    '''
+    attr = 'background-color: {}'.format(color)
+    # remove % and cast to float
+    data = data.replace('%', '', regex=True).astype(float)
+    if data.ndim == 1:  # Series from .apply(axis=0) or axis=1
+        is_max = data == data.max()
+        return [attr if v else '' for v in is_max]
+    else:  # from .apply(axis=None)
+        is_max = data == data.max().max()
+        return pd.DataFrame(np.where(is_max, attr, ''),
+                            index=data.index, columns=data.columns)
