@@ -445,17 +445,19 @@ class Clustering:
     def clustering_similarities(self):
         n_methods = len(self.clusterings_labels)
         n_countries = len(self.country_names)
-        size = n_countries**2
+        n_links = np.zeros((n_methods, ))
         tab = np.zeros((n_methods, n_countries, n_countries))
         sim = np.zeros((n_methods, n_methods))
         # for each clustering, build the table of country links
         for k, clus in enumerate(self.clusterings_labels):
             tab[k] = self.country_links(self.clusterings_labels[clus])
+            n_links[k] = tab[k].sum()
         # for each clustering's table of links,
         # calculate its similarity to the others
         for k in range(n_methods):
             for kk in range(n_methods):
-                sim[k][kk] = (tab[k] == tab[kk]).sum()/size
+                size = max(n_links[k], n_links[kk])
+                sim[k][kk] = (tab[k]*tab[kk]).sum()/size
                 methods = list(self.clusterings_labels.keys())
         sim = pd.DataFrame(sim, index=methods, columns=methods)
         return sim
