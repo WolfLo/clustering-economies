@@ -435,7 +435,9 @@ class Clustering:
         return silh, cal_har
 
     def country_links(self, clustering_array):
-        # given a clustering, build a table of country links
+        '''
+        given a clustering, build a table of country links
+        '''
         ll = len(clustering_array)
         tab = np.zeros((ll, ll))
         for k in range(ll):
@@ -443,6 +445,11 @@ class Clustering:
         return tab
 
     def clustering_similarities(self):
+        '''
+        Calculate the similarity of two clusterings based
+        on the number of countries which are grouped together
+        in both the clusterings.
+        '''
         n_methods = len(self.clusterings_labels)
         n_countries = len(self.country_names)
         n_links = np.zeros((n_methods, ))
