@@ -446,9 +446,10 @@ class Clustering:
 
     def clustering_similarities(self):
         '''
-        Calculate the similarity of two clusterings based
-        on the number of countries which are grouped together
-        in both the clusterings.
+        Calculate the similarity of each of the clusterings
+        to the others, based on the number of countries
+        which are grouped together in both the target clustering
+        and the rest of the clusterings.
         '''
         n_methods = len(self.clusterings_labels)
         n_countries = len(self.country_names)
@@ -470,13 +471,35 @@ class Clustering:
         return sim
 
 
-def plotBarh(df, by_column):
+def label_barh(ax, bars, text_format, by_column, is_inside=True, **kwargs):
+    """
+    Attach a text label to each horizontal bar displaying its y value
+    """
+    max_y_value = max(bar.get_height() for bar in bars)
+    if is_inside:
+        distance = max_y_value * 0.05
+    else:
+        distance = max_y_value * 0.01
+
+    for bar in bars:
+        text = text_format.format(bar.get_width())
+        if is_inside:
+            text_x = bar.get_width() - distance
+        else:
+            text_x = bar.get_width() + distance
+        text_y = bar.get_y() + bar.get_height() / 2
+
+        ax.text(text_x, text_y, text, va='center', **kwargs)
+        ax.set_xlabel(by_column)
+
+
+def plotBarh(df, by_column, show_values):
     '''
     Horizontal bar chart with by_column value for each country.
     by_column - column name of the variable to plot as bars [str]
     '''
-
-    newdf = df.sort_values(by=str(by_column))
+    by_column = str(by_column)
+    newdf = df.sort_values(by=by_column)
     x = np.array(newdf[by_column])
     y = np.array(newdf['Country Name'])
     y_pos = np.arange(len(y))
@@ -486,10 +509,14 @@ def plotBarh(df, by_column):
     ax.set_yticks(y_pos)
     ax.set_yticklabels(y)
     ax.invert_yaxis()  # labels read top-to-bottom
-    # ax.set_xlabel('%GDP')
-    ax.set_title(by_column)
 
-    ax.barh(y_pos, x, color='b')
+    bars = ax.barh(y_pos, x, color='b')
+    # show the value of each bar
+    if show_values:
+        text_format = "{:5.0f}"
+        label_barh(ax, bars, text_format, by_column, is_inside=True)
+    else:
+        ax.set_title(by_column)
 
 
 def plotMultiBarh(df, by_columns, country_names):
